@@ -1,5 +1,14 @@
 from bitcoinutils.setup import setup
 from bitcoinutils.keys import PrivateKey
+from celery import Celery
+
+from coinhunt import (
+    REDIS_URL,
+)
+
+print(REDIS_URL)
+
+app = Celery('tasks', broker=f'{REDIS_URL}')
 
 target = '1CfZWK1QTQE3eS9qn61dQjV89KDjZzfNcv'
 
@@ -9,6 +18,7 @@ def get_address(exp=1):
     address = pub.get_address()
     return (priv.to_wif(compressed=True), address.to_string())
 
+@app.task
 def search_range(start, end):
     setup('mainnet')
     for i in range(start, end):

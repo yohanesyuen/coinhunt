@@ -6,6 +6,8 @@ import random
 
 import logging
 
+from coinhunt import ROOT_DIR
+
 logger = logging.getLogger()
 
 class State(object):
@@ -13,7 +15,7 @@ class State(object):
         self.searched = []
         self.max_length = 500
         self.ranges_being_searched = []
-        self.filename = 'searched.json'
+        self.filename = os.path.join(ROOT_DIR, 'searched.json')
         self.minimum = 2**65
         self.maximum = 2**66
         if len(self.searched) == 0 and os.path.exists(self.filename):

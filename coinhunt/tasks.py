@@ -8,7 +8,11 @@ from coinhunt import (
 
 print(REDIS_URL)
 
-app = Celery('tasks', broker=f'{REDIS_URL}')
+app = Celery(
+    'tasks',
+    broker=f'{REDIS_URL}',
+    backend=f'{REDIS_URL}',
+)
 
 target = '1CfZWK1QTQE3eS9qn61dQjV89KDjZzfNcv'
 

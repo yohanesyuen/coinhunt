@@ -14,6 +14,12 @@ app = Celery(
     backend=f'{REDIS_URL}',
 )
 
+app.conf.update(
+    {
+        'result_expires': 300,
+    }
+)
+
 target = '1CfZWK1QTQE3eS9qn61dQjV89KDjZzfNcv'
 
 def get_address(exp=1):

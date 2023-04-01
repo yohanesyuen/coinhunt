@@ -1,4 +1,5 @@
 #%%
+from typing import List
 from bitcoinutils.setup import setup
 
 import celery
@@ -36,7 +37,7 @@ def main():
     possibilities = state.maximum - state.minimum
     logger.info(f'Starting search from {state.minimum} to {state.maximum}...')
     logger.info(f'Possibilities: {possibilities}')
-    results = []
+    results: List[AsyncResult] = []
 
     while state.running:
         if len(results) < len(get_workers().keys()):    
@@ -46,10 +47,22 @@ def main():
             results.append(search_range.apply_async(args=(start, end)))
             state.ranges_being_searched.append((start, end))
         new_results = []
-        for result in results:
-            print(result.get())
-        time.sleep(1)
-        continue
+        logger.debug('Checking results...')
+        while len(results) > 0:
+            res = results.pop()
+            if res.status != 'SUCCESS':
+                new_results.append(res)
+                continue
+            res = res.get()
+            if res['status'] == 'Found':
+                logger.info(f"Found! WIF: {res['wif']}")
+                state.running = False
+                break
+            elif res['status'] == 'Not found':
+                state.update_searched_ranges(res['start'], res['end'])
+            else:
+                new_results.append(res)
+        results = new_results
 
 def signal_handler(sig, frame):
     logger.info('You pressed Ctrl+C!')

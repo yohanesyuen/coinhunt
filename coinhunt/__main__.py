@@ -5,7 +5,6 @@ from bitcoinutils.setup import setup
 import celery
 import logging
 import signal
-import time
 
 import dotenv
 
@@ -39,15 +38,14 @@ def main():
     logger.info(f'Possibilities: {possibilities}')
     results: List[AsyncResult] = []
 
-    while state.running:
-        if len(results) < len(get_workers().keys()):    
+    while state.running or len(results) > 0:
+        if len(results) < len(get_workers().keys()) and state.running:    
             start, end = state.get_random_range()
             count = end - start
-            print(f"Searching {count} keys from {start} to {end}...")
+            logger.info(f"Searching {count} keys from {start} to {end}...")
             results.append(search_range.apply_async(args=(start, end)))
             state.ranges_being_searched.append((start, end))
         new_results = []
-        logger.debug('Checking results...')
         while len(results) > 0:
             res = results.pop()
             if res.status != 'SUCCESS':
@@ -60,6 +58,7 @@ def main():
                 break
             elif res['status'] == 'Not found':
                 state.update_searched_ranges(res['start'], res['end'])
+                print_progress(state)
             else:
                 new_results.append(res)
         results = new_results
@@ -67,8 +66,6 @@ def main():
 def signal_handler(sig, frame):
     logger.info('You pressed Ctrl+C!')
     state.running = False
-    state.update_searched_ranges(state.start, state.end)
-    exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
 

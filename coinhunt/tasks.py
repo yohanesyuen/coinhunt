@@ -16,7 +16,8 @@ app = Celery(
 
 app.conf.update(
     {
-        'result_expires': 300,
+        'result_expires': 30,
+        'prefetch_multiplier': 1,
     }
 )
 
@@ -44,3 +45,6 @@ def search_range(start, end):
         'start': start,
         'end': end
     }
+
+def purge():
+    app.control.purge()

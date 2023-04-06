@@ -2,11 +2,48 @@ from bitcoinutils.setup import setup
 from bitcoinutils.keys import PrivateKey
 from celery import Celery
 
+from celery.utils.log import get_task_logger
+
 from coinhunt import (
     REDIS_URL,
 )
 
-print(REDIS_URL)
+from redis import StrictRedis
+
+from typing import Any
+
+import logging
+
+class RedisBaseHandler(logging.StreamHandler):
+    def __init__(self, raw_logging: bool = False, **kwargs: Any):
+        super().__init__()
+        self.raw_logging = raw_logging
+        if 'redis_url' in kwargs.keys():
+            self.redis_client = StrictRedis.from_url(kwargs['redis_url'])
+        else:
+            self.redis_client = StrictRedis(**kwargs)
+
+    def emit(self, message: logging.LogRecord):
+        raise NotImplementedError("Emit functionality from base class not overridden.")
+
+
+class RedisChannelHandler(RedisBaseHandler):
+    def __init__(self, channel: str, **kwargs: Any):
+        super().__init__(**kwargs)
+
+        self.channel = channel
+
+    def emit(self, message: logging.LogRecord):
+        content = str(message.msg)
+        if self.raw_logging:
+            content += f"{message.lineno} - {message.pathname}"
+
+        self.redis_client.publish(self.channel, content)
+
+logger = get_task_logger(__name__)
+logger.setLevel('INFO')
+logger.addHandler(RedisChannelHandler('coinhunt:log', redis_url=REDIS_URL))
+
 
 app = Celery(
     'tasks',
@@ -21,7 +58,7 @@ app.conf.update(
     }
 )
 
-target = '1CfZWK1QTQE3eS9qn61dQjV89KDjZzfNcv'
+target = '13zb1hQbWVsc2S7ZTZnP2G4undNNpdh5so'
 
 def get_address(exp=1):
     priv = PrivateKey(secret_exponent = exp)

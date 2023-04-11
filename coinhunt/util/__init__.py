@@ -19,6 +19,7 @@ def print_progress(state: State):
     print("Trolled: {}".format(trolled))
     print("Compressing: {}".format(compressing))
     print("Search space: {:,}".format(search_space))
+    print("Chunk size: {:,}".format(state.chunk_size))
     completed = 0
     for r in state.searched:
         completed += r[1] - r[0]
@@ -28,6 +29,17 @@ def print_progress(state: State):
     s_completed = ' ' * (len(s_remaining) - len(s_completed)) + s_completed
     print("Completed: {} ({:.20f}%)".format(s_completed, completed_pct * 100))
     print("Remaining: {}".format(s_remaining))
+    print("Chunks left: {:,}".format((search_space - completed) // state.chunk_size))
+    gaps = [r[0] for r in state.get_unsearched_ranges()[:20]]
+    print("Chunks: {}".format(gaps))
+    time_left = (search_space - completed) // 1000
+    time_left_s = time_left % 60
+    time_left_m = int(time_left // 60) % 60
+    time_left_h = int(time_left // 3600) % 24
+    time_left_d = int(time_left // 86400)
+    time_left = "{:,}d {:02d}h {:02d}m {:02d}s".format(
+        time_left_d, time_left_h, time_left_m, time_left_s)
+    print("Time left: {}".format(time_left))
     print("=====================================")
 
 def get_unsearched_ranges(state: State):

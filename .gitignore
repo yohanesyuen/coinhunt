@@ -2,3 +2,8 @@ __pycache__
 *.egg_info
 .env
 searched.json
+
+
+# Added by cargo
+
+/target

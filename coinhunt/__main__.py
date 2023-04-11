@@ -1,5 +1,5 @@
 #%%
-from typing import List
+import sys
 from bitcoinutils.setup import setup
 
 import celery
@@ -10,18 +10,18 @@ import dotenv
 
 from celery.result import AsyncResult
 
-from coinhunt.tasks import search_range
+from coinhunt.tasks import search_range, purge
 
 from coinhunt.state import State
 from coinhunt.util import print_progress
+
+import time
 
 logger = logging.getLogger(__name__)
 
 
 #%%
 dotenv.load_dotenv()
-target = '13zb1hQbWVsc2S7ZTZnP2G4undNNpdh5so'
-
 state = State()
 
 def execute():
@@ -34,23 +34,27 @@ def main():
     # always remember to setup the network
     setup('mainnet')
     possibilities = state.maximum - state.minimum
+    results = state.results
     logger.info(f'Starting search from {state.minimum} to {state.maximum}...')
     logger.info(f'Possibilities: {possibilities}')
-    results: List[AsyncResult] = []
+
 
     while state.running or len(results) > 0:
-        if len(results) < len(get_workers().keys()) and state.running:    
+        if len(results) < len(get_workers().keys()) * 4 and state.running:
             start, end = state.get_random_range()
             count = end - start
             logger.info(f"Searching {count} keys from {start} to {end}...")
-            results.append(search_range.apply_async(args=(start, end)))
-            state.ranges_being_searched.append((start, end))
+            res: AsyncResult = search_range.apply_async(args=(start, end))
+            results.append(res)
+            state.ranges_being_searched[res.id] = (start, end)
         new_results = []
         while len(results) > 0:
             res = results.pop()
             if res.status != 'SUCCESS':
+                # print(res.status)
                 new_results.append(res)
                 continue
+            rid = res.id
             res = res.get()
             if res['status'] == 'Found':
                 logger.info(f"Found! WIF: {res['wif']}")
@@ -58,14 +62,19 @@ def main():
                 break
             elif res['status'] == 'Not found':
                 state.update_searched_ranges(res['start'], res['end'])
+                state.ranges_being_searched.pop(rid)
                 print_progress(state)
-            else:
-                new_results.append(res)
         results = new_results
 
 def signal_handler(sig, frame):
     logger.info('You pressed Ctrl+C!')
-    state.running = False
+    if state.running:
+        logger.info('Stopping search...')
+        state.running = False
+    else:
+        logger.info('Purging state...')
+        purge()
+        sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
 

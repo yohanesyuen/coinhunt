@@ -1,3 +1,4 @@
+from queue import Queue
 from typing import List, Tuple
 
 import json
@@ -7,25 +8,27 @@ import random
 import logging
 
 from coinhunt import ROOT_DIR
+from celery.result import AsyncResult
 
 logger = logging.getLogger()
 
 class State(object):
     def __init__(self):
         self.searched = []
-        self.max_length = 500
-        self.ranges_being_searched = []
         self.filename = os.path.join(ROOT_DIR, 'searched.json')
-        self.minimum = 2**65
-        self.maximum = 2**66
         if len(self.searched) == 0 and os.path.exists(self.filename):
             self.unmarshall()
+        self.max_length = 40
+        self.ranges_being_searched = dict()
+        self.ranges_queue = Queue()
+        self.minimum = 2**65
+        self.maximum = 2**66
+        self.chunk_size = 60000
 
-        self.start = None
-        self.end = None
-        self.current = None
+        self.results: List[AsyncResult] = []
 
         self.compressing = False
+        self.trolled = True
 
         self.running = True
 
@@ -66,76 +69,77 @@ class State(object):
             self.compressing = False
 
     def combined_ranges(self):
-        ranges = self.searched + self.ranges_being_searched
+        ranges = self.searched + list(self.ranges_being_searched.values())
         ranges = self.merge_searched_ranges(ranges)
         return ranges
-    
-    def ranges_to_search(self):
-        ranges = self.combined_ranges()
-        if len(ranges) == 0:
-            return [(self.minimum, self.maximum)]
-        if ranges[0][0] > self.minimum:
-            ranges.insert(0, (self.minimum, ranges[0][0]-1))
-        if ranges[-1][1] < self.maximum:
-            ranges.append((ranges[-1][1]+1, self.maximum))
-        return ranges
-    
-    # create weights with smallest gap having the highest weight
-    def get_weights(self, direction):
-        # If direction is "increment" then we want to prioritize the smallest gap
-        if direction == 'increment':
-            weights = []
-            for r in self.ranges_to_search():
-                weights.append(r[1] - r[0])
-            return weights
 
-        # If direction is "decrement" then we want to prioritize the largest gap
-        if direction == 'decrement':
-            weights = []
-            for r in self.ranges_to_search():
-                weights.append(self.maximum - (r[1] - r[0]))
-            return weights
-    
-    # ensure searched ranges are removed from ranges_being_searched
-    def remove_searched_ranges(self):
-        for searched in self.searched:
-            for i in range(len(self.ranges_being_searched)):
-                left_matches = self.ranges_being_searched[i][0] == searched[0]
-                right_matches = self.ranges_being_searched[i][1] == searched[1]
-                if left_matches and right_matches:
-                    self.ranges_being_searched.pop(i)
-                    break
+    def get_unsearched_ranges(self):
+        searched = self.combined_ranges()
+        unsearched = list()
+        for i in range(len(searched)-1):
+            gap = searched[i+1][0] - searched[i][1]
+            unsearched.append((gap, (searched[i][1], searched[i+1][0])))
+        return sorted(unsearched, key=lambda x: x[0])
 
     def get_random_range(self):
         self.compress_if_needed()
         searched = self.combined_ranges()
         # Get values between 0 and smallest range if first range is not 0
         if len(searched) > 0 and searched[0][0] > self.minimum:
-            logger.debug('Getting values between 0 and smallest range')
             start = self.minimum
-            end = start + 60000
+            end = start + self.chunk_size
+            logger.debug('Getting values between minimum and minimum + 60k')
             return self.limit_range(start, end)
         # Get values between largest range and maximum if last range is not maximum
         if len(searched) > 0 and searched[-1][1] < self.maximum:
-            logger.debug('Getting values between largest range and maximum')
-            start = self.maximum - 60000
+            logger.debug('Getting values between maximum - 60k and maximum')
+            start = self.maximum - self.chunk_size
             end = self.maximum
             return self.limit_range(start, end)          
         # Get values between two ranges with the smallest gap if compressing
         if len(searched) > 2:
-            logger.debug('Getting values between two ranges with the smallest gap')
-            smallest = None
-            for i in range(len(searched)-1):
-                gap = searched[i+1][0] - searched[i][1]
-                if smallest is None or gap < smallest[0]:
-                    smallest = (gap, i)
+            if not self.ranges_queue.empty():
+                logger.debug('Getting values from ranges_queue')
+                search_range = self.ranges_queue.get()
+            elif not self.trolled:
+                logger.debug('Chunkify gaps larger than 60k * 4')
+                for r in self.get_unsearched_ranges():
+                    if r[0] > self.chunk_size * 4:
+                        self.ranges_queue.put(r)
+                    if self.ranges_queue.qsize() > 10:
+                        break
+                self.trolled = True
+                search_range = self.ranges_queue.get()
+            elif self.compressing:
+                logger.debug('Get smallest gap between two ranges')
+                search_range = self.get_unsearched_ranges()[0]
+            else:
+                logger.debug(
+                    'Getting values between two random ranges weighted by gap size'
+                )
+                search_range = random.choices(
+                    self.get_unsearched_ranges(),
+                    weights=[1/x[0] for x in self.get_unsearched_ranges()]
+                )[0]
+            logger.debug(search_range)
             # Return the full range if gap is less than 60k
-            if smallest[0] < 60000 * 2:
-                start = searched[smallest[1]][1]
-                end = searched[smallest[1]+1][0]
+            if search_range[0] < self.chunk_size * 2:
+                start = search_range[1][0]
+                end = search_range[1][1]
                 return (start, end)
-            range_start = searched[smallest[1]][1]
-            range_end = searched[smallest[1]+1][0]
+            elif search_range[0] < self.chunk_size * 100:
+                # Get the value at middle - 60k
+                range_start = int(max(
+                    search_range[1][0] + (search_range[0] // 2) - (self.chunk_size // 2),
+                    search_range[1][0]
+                ))
+                range_end = int(min(
+                    range_start + self.chunk_size,
+                    search_range[1][1]
+                ))
+                return self.limit_range(range_start, range_end)
+            range_start = search_range[1][0]
+            range_end = search_range[1][1]
             range_size = range_end - range_start
             logger.info('Compressing range betwen {} to {} with size {}'.format(
                 range_start,
@@ -143,11 +147,10 @@ class State(object):
                 range_size
             ))
             start = random.randint(range_start, range_end)
-            end = random.randint(start, range_end)
-            return self.limit_range(start, end)
+            return self.limit_range(start, range_end)
 
         start = random.randint(self.minimum, self.maximum)
-        end = random.randint(start, start + 60000)
+        end = random.randint(start, start + self.chunk_size)
         return self.limit_range(start, end)
     
     def limit_range(self, start, end):
@@ -155,6 +158,6 @@ class State(object):
             start = self.minimum
         if end > self.maximum:
             end = self.maximum
-        if end - start > 60000:
-            end = start + 60000
+        if end - start > self.chunk_size:
+            end = start + self.chunk_size
         return (start, end)

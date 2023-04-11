@@ -1,0 +1,9 @@
+[Unit]
+Description=CoinHunt
+After=multi-user.target
+[Service]
+Type=simple
+Restart=always
+ExecStart=/usr/local/bin/celery 
+[Install]
+WantedBy=multi-user.target

@@ -64,14 +64,19 @@ def get_address(exp=1):
     priv = PrivateKey(secret_exponent = exp)
     pub = priv.get_public_key()
     address = pub.get_address()
-    return (priv.to_wif(compressed=True), address.to_string())
+    s_address = address.to_string()
+    if s_address == target:
+        (priv.to_wif(compressed=True), s_address)
+    else:
+        return (None, None)
+    return 
 
 @app.task
 def search_range(start, end):
     setup('mainnet')
     for i in range(start, end):
         wif, pub = get_address(i)
-        if pub == target:
+        if wif is not None and pub == target:
             return {
                 'status': 'Found',
                 'wif': wif,

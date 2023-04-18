@@ -8,6 +8,6 @@ setup(
     version='0.0.1',
     description='A Bitcoin private key finder',
     packages=find_packages(),
-    requires=requirements
+    install_requires=requirements
 )
 

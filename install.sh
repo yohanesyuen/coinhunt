@@ -1,4 +1,7 @@
 #/bin/bash
+apt install python-is-python3 -y
+apt install python3 -y
+apt install python3-pip -y
 systemctl restart networkd-dispatcher.service unattended-upgrades.service
 if [ ! -d "/app" ]; then
     mkdir /app

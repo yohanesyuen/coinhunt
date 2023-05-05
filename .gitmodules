@@ -1,3 +1,5 @@
 [submodule "coinhunt/secp256k1"]
 	path = coinhunt/secp256k1
-	url = git@github.com:yohanesyuen/secp256k1.git
+	url = https://github.com/yohanesyuen/secp256k1.git
+[submodule "https://github.com/yohanesyuen/secp256k1.git"]
+	url = coinhunt/secp256k1

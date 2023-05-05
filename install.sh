@@ -9,6 +9,9 @@ if [ ! -d "/app" ]; then
 fi
 if [ ! -d "/app/coinhunt" ]; then
     git clone https://github.com/yohanesyuen/coinhunt.git /app/coinhunt
+    cd /app/coinhunt
+    pwd
+    git submodule update --init --recursive
     pip install -e /app/coinhunt
 else
     cd /app/coinhunt

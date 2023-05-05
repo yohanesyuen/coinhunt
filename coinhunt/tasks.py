@@ -12,6 +12,9 @@ from redis import StrictRedis
 
 from typing import Any
 
+import coinhunt.secp256k1.secp256k1 as ice
+
+import platform
 import logging
 
 class RedisBaseHandler(logging.StreamHandler):
@@ -60,16 +63,38 @@ app.conf.update(
 
 target = '13zb1hQbWVsc2S7ZTZnP2G4undNNpdh5so'
 
-def get_address(exp=1):
-    priv = PrivateKey(secret_exponent = exp)
-    pub = priv.get_public_key()
-    address = pub.get_address()
-    s_address = address.to_string()
-    if s_address == target:
-        (priv.to_wif(compressed=True), s_address)
-    else:
-        return (None, None)
-    return 
+platform_name = platform.system().lower()
+
+def can_ice():
+    if platform_name.startswith('win'):
+        return True
+    if platform_name.startswith('lin'):
+        return True
+    return False
+
+if can_ice():
+    def get_address(exp=1):
+        s_address = ice.privatekey_to_address(
+            0, True, exp
+        )
+        if s_address == target:
+            return (
+                PrivateKey(secret_exponent = exp)
+                    .to_wif(compressed=True),
+                s_address
+            )
+        else:
+            return (None, None)
+else:
+    def get_address(exp=1):
+        priv = PrivateKey(secret_exponent = exp)
+        pub = priv.get_public_key()
+        address = pub.get_address()
+        s_address = address.to_string()
+        if s_address == target:
+            return (priv.to_wif(compressed=True), s_address)
+        else:
+            return (None, None)
 
 @app.task
 def search_range(start, end):

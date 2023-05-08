@@ -12,8 +12,6 @@ from redis import StrictRedis
 
 from typing import Any
 
-import coinhunt.secp256k1.secp256k1 as ice
-
 import platform
 import logging
 
@@ -74,6 +72,7 @@ def can_ice():
 
 if can_ice():
     def get_address(exp=1):
+        import coinhunt.secp256k1.secp256k1 as ice
         s_address = ice.privatekey_to_address(
             0, True, exp
         )
@@ -99,7 +98,7 @@ else:
 @app.task
 def search_range(start, end):
     setup('mainnet')
-    for i in range(start, end):
+    for i in range(start, end+1):
         wif, pub = get_address(i)
         if wif is not None and pub == target:
             return {

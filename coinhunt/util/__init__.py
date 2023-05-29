@@ -2,6 +2,15 @@ from bitcoinutils.keys import PrivateKey
 
 from coinhunt.state import State
 
+from cachetools import TTLCache, cached
+import celery
+
+@cached(cache=TTLCache(maxsize=1, ttl=60))
+def get_workers():
+    return celery.current_app.control.inspect().ping()
+
+prev_hit_chance = 0
+
 def get_address(exp=1):
     priv = PrivateKey(secret_exponent = exp)
     pub = priv.get_public_key()
@@ -9,6 +18,7 @@ def get_address(exp=1):
     return (priv.to_wif(compressed=True), address.to_string())
 
 def print_progress(state: State):
+    global prev_hit_chance
     # print progress
     search_space = state.maximum - state.minimum
     print("Searched: {}".format(len(state.searched)))
@@ -29,10 +39,19 @@ def print_progress(state: State):
     s_completed = ' ' * (len(s_remaining) - len(s_completed)) + s_completed
     print("Completed: {} ({:.20f}%)".format(s_completed, completed_pct * 100))
     print("Remaining: {}".format(s_remaining))
-    print("Chunks left: {:,}".format((search_space - completed) // state.chunk_size))
-    gaps = [r[0] for r in state.get_unsearched_ranges()[:20]]
+    chunks_left = (search_space - completed) // state.chunk_size
+    print("Chunks left: {:,}".format(chunks_left))
+    hit_chance = 1 / chunks_left
+    print("Hit chance: {:.30f}%".format(hit_chance * 100))
+    if prev_hit_chance > 0:
+        print("Hit chance multiplier: {:.30f}%".format(hit_chance / prev_hit_chance * 100))
+    prev_hit_chance = hit_chance
+    gaps = [r[0] for r in state.get_unsearched_ranges(filtered=False)[:20]]
     print("Chunks: {}".format(gaps))
-    time_left = (search_space - completed) // 1000
+    print("Range Queue: {}".format(
+        [r[0] for r in list(state.ranges_queue.queue)]
+    ))
+    time_left = chunks_left * 60 // 20
     time_left_s = time_left % 60
     time_left_m = int(time_left // 60) % 60
     time_left_h = int(time_left // 3600) % 24
@@ -49,3 +68,5 @@ def get_unsearched_ranges(state: State):
         gap = searched[i+1][0] - searched[i][1]
         unsearched.append((gap, (searched[i][1], searched[i+1][0])))
     return unsearched
+
+

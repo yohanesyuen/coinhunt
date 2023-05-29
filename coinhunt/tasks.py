@@ -59,8 +59,6 @@ app.conf.update(
     }
 )
 
-target = '13zb1hQbWVsc2S7ZTZnP2G4undNNpdh5so'
-
 platform_name = platform.system().lower()
 
 def can_ice():
@@ -71,7 +69,7 @@ def can_ice():
     return False
 
 if can_ice():
-    def get_address(exp=1):
+    def get_address(exp=1, target='13zb1hQbWVsc2S7ZTZnP2G4undNNpdh5so'):
         import coinhunt.secp256k1.secp256k1 as ice
         s_address = ice.privatekey_to_address(
             0, True, exp
@@ -85,7 +83,7 @@ if can_ice():
         else:
             return (None, None)
 else:
-    def get_address(exp=1):
+    def get_address(exp=1, target='13zb1hQbWVsc2S7ZTZnP2G4undNNpdh5so'):
         priv = PrivateKey(secret_exponent = exp)
         pub = priv.get_public_key()
         address = pub.get_address()
@@ -96,7 +94,7 @@ else:
             return (None, None)
 
 @app.task
-def search_range(start, end):
+def search_range(start, end, target='13zb1hQbWVsc2S7ZTZnP2G4undNNpdh5so'):
     setup('mainnet')
     for i in range(start, end+1):
         wif, pub = get_address(i)

@@ -54,7 +54,7 @@ app = Celery(
 
 app.conf.update(
     {
-        'result_expires': 30,
+        'result_expires': 300,
         'prefetch_multiplier': 1,
     }
 )
